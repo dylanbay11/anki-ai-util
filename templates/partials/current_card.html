@@ -1,0 +1,10 @@
+<div class="current-card">
+  <h3>Current Card <small>(note {{ note_id }})</small></h3>
+  {% for field_name, field_md in fields.items() %}
+  <div class="field">
+    <label>{{ field_name }}</label>
+    <pre>{{ field_md }}</pre>
+  </div>
+  {% endfor %}
+  <!-- TODO: inline edit + save, suggest improvement button -->
+</div>

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Home — Anki AI Companion{% endblock %}
+{% block content %}
+<div class="page">
+  <h1>Anki AI Companion</h1>
+  <p class="subtitle">AI-assisted card creation and editing via AnkiConnect.</p>
+
+  {% if not anki_connected %}
+  <div class="alert alert-error">
+    AnkiConnect is not reachable. Make sure Anki is running with the AnkiConnect add-on installed.
+  </div>
+  {% else %}
+  <div class="alert alert-ok">AnkiConnect connected.</div>
+  {% endif %}
+
+  <div class="card-grid">
+    <a href="/generate" class="card">
+      <h2>Generate Cards</h2>
+      <p>Paste text and let AI draft new cards for review.</p>
+    </a>
+    <a href="/bulk-edit" class="card">
+      <h2>Bulk AI Edit</h2>
+      <p>Apply a natural language instruction across an entire deck.</p>
+    </a>
+  </div>
+
+  <!-- Live current-card panel, polls every 2s while page is open -->
+  <div id="current-card-panel"
+       hx-get="/current-card/poll"
+       hx-trigger="every 2s"
+       hx-swap="innerHTML">
+  </div>
+</div>
+{% endblock %}

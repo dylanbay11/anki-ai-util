@@ -13,7 +13,7 @@ The core problem being solved: Anki's card creation and editing workflow is host
 - **OS:** Ubuntu 22.04 LTS (older release; Anki version constraints apply)
 - **Anki:** Installed from an older/LTS-compatible package. Anki is running and functional. It may log a timezone-change warning on startup — this is cosmetic and does not affect AnkiConnect operation.
 - **AnkiConnect:** Installed and confirmed responding on `http://localhost:8765` (returns `{"result": 6, "error": null}` to a `version` action).
-- **Node.js:** Not available via system package manager at a usable version. Installed Node.js 20 via nvm. Always load nvm before running `node`/`npm`: `export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`.
+- **Python:** 3.13.7 via pyenv. Package management via **uv**. Run everything with `uv run ...`.
 - **gh CLI:** Available (`gh version 2.4.0`), authenticated as `dylanbay11`. Repo: `https://github.com/dylanbay11/anki-ai-util`.
 
 ---
@@ -23,18 +23,29 @@ The core problem being solved: Anki's card creation and editing workflow is host
 - Anki is installed and running
 - The AnkiConnect add-on is installed in Anki (code: 2055492159)
 - AnkiConnect is accessible at `http://localhost:8765`
-- An Anthropic API key is available in the environment
+- An Anthropic API key is set in `.env` (copy `.env.example`)
 
 ---
 
 ## Tech Stack
 
-- **Runtime:** Node.js
-- **Framework:** Next.js (App Router) — local dev server only, not deployed
-- **Styling:** Tailwind CSS
-- **AI:** Anthropic SDK (`@anthropic-ai/sdk`), model `claude-sonnet-4-20250514`
-- **Markdown↔HTML:** Turndown (HTML → Markdown) + marked (Markdown → HTML)
-- **AnkiConnect:** Plain fetch calls to `http://localhost:8765` (no special library needed)
+- **Runtime:** Python 3.13.7, managed via uv
+- **Web framework:** FastAPI + Uvicorn
+- **Frontend:** Jinja2 templates + HTMX (no build step, no JS framework)
+- **Styling:** Plain CSS (`static/style.css`)
+- **AI:** Anthropic SDK (`anthropic`), model `claude-sonnet-4-20250514`
+- **Markdown↔HTML:** `markdownify` (HTML → Markdown) + `markdown` (Markdown → HTML)
+- **AnkiConnect:** `httpx` async calls to `http://localhost:8765`
+
+---
+
+## Running the Dev Server
+
+```bash
+uv run uvicorn main:app --reload
+```
+
+Then open `http://localhost:8000`.
 
 ---
 
@@ -66,13 +77,11 @@ All field values coming from AnkiConnect are HTML strings. All field values bein
 
 ---
 
-## Conversion Layer
+## Conversion Layer (`lib/convert.py`)
 
-This is the foundation everything else builds on. Implement as `lib/convert.ts`:
-
-- `htmlToMarkdown(html: string): string` — use Turndown; handle common Anki patterns (cloze spans, image tags, code blocks)
-- `markdownToHtml(md: string): string` — use marked; output must be clean HTML Anki will render correctly
-- Cloze syntax must be preserved: Anki uses `{{c1::text}}` — this should pass through both directions unchanged
+- `html_to_markdown(html: str) -> str` — uses markdownify; preserves cloze syntax
+- `markdown_to_html(md: str) -> str` — uses markdown lib; output is clean HTML for Anki
+- Cloze syntax `{{c1::text}}` is encoded to a placeholder before conversion and decoded after, so it passes through both directions unchanged
 
 ---
 
@@ -92,7 +101,7 @@ Batch in groups of 20 notes per AI call. Do not send entire decks in one prompt.
 
 ### 3. Current Card Quick Edit
 
-Polls `guiCurrentCard` every 2 seconds while Anki is open. Displays the current card's fields as Markdown in a small persistent panel. User can edit inline and save — changes are written back immediately via `updateNoteFields`. Optionally, a "Suggest improvement" button sends the card to the AI with its recent review history as context and proposes a rewrite.
+Polls `guiCurrentCard` every 2 seconds via HTMX while the page is open. Displays the current card's fields as Markdown in a persistent panel. User can edit inline and save — changes are written back immediately via `updateNoteFields`. Optionally, a "Suggest improvement" button sends the card to the AI with its recent review history as context and proposes a rewrite.
 
 This is the highest-value feature. The review session is the highest-intent moment for card edits and Anki provides no good path for it.
 
@@ -102,16 +111,10 @@ Given a note ID, fetch the note, fetch its review history via `getReviewsOfCards
 
 ---
 
-## AI Layer
+## AI Layer (`lib/llm.py`)
 
-All AI calls go through a single `lib/llm.ts` module. It should:
-
-- Accept a system prompt, user prompt, and optional structured output schema
-- Use the Anthropic SDK with `claude-sonnet-4-20250514`
-- Return parsed JSON when structured output is requested, raw text otherwise
-- Handle retries (max 2) on rate limit errors
-
-For structured outputs, instruct the model in the system prompt to return only valid JSON with no preamble or markdown fences. Parse with a try/catch and surface parse errors clearly.
+- `call_llm(system, user) -> str` — async; retries up to 2 times on rate limit errors
+- `call_llm_json(system, user) -> object` — same, but parses the response as JSON; strips markdown fences if present
 
 ---
 
@@ -119,21 +122,26 @@ For structured outputs, instruct the model in the system prompt to return only v
 
 ```
 /
-├── app/
-│   ├── page.tsx               # Home: deck selector + feature entry points
-│   ├── generate/page.tsx      # Card generation from text
-│   ├── bulk-edit/page.tsx     # Bulk AI editing for a deck
-│   └── api/
-│       ├── anki/route.ts      # Proxy to AnkiConnect (avoids CORS)
-│       └── ai/route.ts        # AI call handler
+├── main.py                    # FastAPI app, mounts routers
+├── pyproject.toml             # uv/pip dependencies
+├── .env.example               # Copy to .env and fill in key
 ├── lib/
-│   ├── anki.ts                # AnkiConnect wrapper functions
-│   ├── convert.ts             # HTML ↔ Markdown conversion
-│   └── llm.ts                 # AI service layer
-└── components/
-    ├── ProposalReviewer.tsx    # Step-through accept/reject UI for AI proposals
-    ├── MarkdownEditor.tsx      # Markdown textarea with live preview
-    └── CurrentCard.tsx        # Live current-card panel
+│   ├── anki.py                # AnkiConnect async wrapper (httpx)
+│   ├── convert.py             # HTML ↔ Markdown (cloze-safe)
+│   └── llm.py                 # Anthropic SDK wrapper
+├── routers/
+│   ├── generate.py            # /generate — card generation from text
+│   ├── bulk_edit.py           # /bulk-edit — bulk AI editing
+│   └── current_card.py        # /current-card — live card panel + polling
+├── templates/
+│   ├── base.html              # Shared layout with nav + HTMX CDN
+│   ├── index.html             # Home page with AnkiConnect status
+│   ├── generate.html
+│   ├── bulk_edit.html
+│   └── partials/
+│       └── current_card.html  # HTMX-swapped fragment
+└── static/
+    └── style.css
 ```
 
 ---
@@ -149,8 +157,9 @@ ANKI_CONNECT_URL=         # Default: http://localhost:8765
 
 ## Key Implementation Notes
 
-- **Always check AnkiConnect availability on startup.** Hit `http://localhost:8765` with a `version` action. If it fails, show a clear "Anki is not running or AnkiConnect is not installed" message before rendering anything.
+- **Always check AnkiConnect availability on startup.** The lifespan handler in `main.py` checks the connection and warns if unavailable. The home page also shows live status.
 - **Never write directly to Anki without user confirmation.** Every AI-generated or AI-modified card goes through the proposal UI before `addNote` or `updateNoteFields` is called.
-- **Cloze and Basic are different note types in Anki.** When adding notes, `addNote` requires specifying the model name (`"Basic"` or `"Cloze"`). Do not mix them. The deck the user selects may contain both types; handle this when fetching and displaying notes.
-- **AnkiConnect field names are deck-specific.** The default Basic note type has fields named `"Front"` and `"Back"`. But users may have custom note types with different field names. When displaying or editing fields, use the actual field names from `notesInfo` — do not hardcode `"Front"`/`"Back"`.
-- **HTML → Markdown conversion will be lossy for some cards.** Cards with tables, complex formatting, or LaTeX will not convert cleanly. Flag these and show the raw HTML as a fallback rather than a broken Markdown rendering.
+- **Cloze and Basic are different note types in Anki.** When adding notes, `addNote` requires specifying the model name (`"Basic"` or `"Cloze"`). Do not mix them.
+- **AnkiConnect field names are deck-specific.** The default Basic note type has fields named `"Front"` and `"Back"`. But users may have custom note types with different field names. Use the actual field names from `notesInfo` — do not hardcode `"Front"`/`"Back"`.
+- **HTML → Markdown conversion will be lossy for some cards.** Cards with tables, complex formatting, or LaTeX will not convert cleanly. Flag these and show the raw HTML as a fallback.
+- **HTMX is used for interactivity.** Loaded from CDN in `base.html`. Polling uses `hx-trigger="every 2s"`. Proposal step-through uses `hx-swap` to replace partial fragments. No JS framework needed.
