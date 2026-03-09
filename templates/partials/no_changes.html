@@ -1,0 +1,14 @@
+{#
+  Rendered by /suggest when the judge determines the card needs no changes.
+  Dismiss clears the proposal area.
+#}
+<div class="no-changes">
+  <p class="no-changes-label">Card looks good</p>
+  <p class="no-changes-reason">{{ reason }}</p>
+  <button type="button" class="btn-discard"
+          hx-get="/current-card/clear-proposal"
+          hx-target="#proposal"
+          hx-swap="innerHTML">
+    Dismiss
+  </button>
+</div>

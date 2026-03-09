@@ -1,5 +1,26 @@
 # Anki Companion — AI Coding Starter Document
 
+## Current Status (as of 2026-03-08)
+
+### Working
+- **Current card panel** (Feature 3): polls `guiCurrentCard` every 2s via HTMX, displays fields as editable Markdown, saves back to Anki via `updateNoteFields`
+- **AI suggestion for single card** (Feature 4): two-stage judge → suggest pipeline; judge first decides if the card needs changes, suggest proposes edits if so; proposal is editable before accepting (`partials/proposal.html`, `partials/no_changes.html`)
+- **HTML ↔ Markdown conversion**: cloze-safe and media-safe (images and audio pass through as `[img:...]` / `[sound:...]` tokens)
+- **Card quality policy**: `policies/card_quality.md` loaded at startup via `lib/policy.py`; prepended to every AI system prompt
+- **Structured LLM output**: Instructor + Pydantic (`lib/models.py`) enforce output shape; `lib/validate.py` enforces Anki-specific rules (verbatim cloze tokens, media tokens, field completeness)
+- **LLM request logging**: every call appended to `logs/llm_requests.jsonl` (JSONL, gitignored)
+
+### Stub / Not Yet Implemented
+- **Card generation from text** (Feature 1): route and template exist, logic is TODO
+- **Bulk AI editing** (Feature 2): route and template exist, logic is TODO
+
+### Next Goals
+- End-to-end test the single-card AI suggest flow (proposal display, accept writes to Anki, discard clears)
+- Implement card generation from text (Feature 1)
+- Implement bulk AI editing (Feature 2), including batch logic (20 notes/call) and `policies/split_merge.md`
+
+---
+
 ## What This Is
 
 A local companion utility for Anki that provides AI-assisted card creation and editing without replacing Anki or modifying its internals. The user runs Anki normally. This tool runs alongside it, communicating via AnkiConnect (a free Anki add-on that exposes a local REST API on port 8765). Anki never knows this tool exists — it just sees normal card edits coming through its API.
@@ -74,9 +95,10 @@ This is a common source of bugs and AI confusion. Read this before touching anyt
 | Current review session | `guiCurrentCard()` → returns **both** `cardId` and `noteId` |
 | Bridge note → its cards | `notesInfo` result includes `"cards": [cardId, ...]` for each note |
 
-**`guiCurrentCard` returns both IDs — don't mix them up:**
-- Use `result["noteId"]` when saving edits to field content.
-- Use `result["cardId"]` when fetching review history.
+**`guiCurrentCard` does NOT return `noteId`** — it returns `cardId` and fields only.
+To get the `noteId`, call `cardsInfo([cardId])` and read `result[0]["note"]`.
+- Use the resolved `noteId` when saving edits to field content.
+- Use `cardId` when fetching review history.
 
 **To get review history for a note:** you cannot do it directly. First call `notesInfo([noteId])`, then take the `"cards"` list from the result, then pass those cardIds to `getReviewsOfCards`.
 
@@ -103,7 +125,8 @@ Key actions used in this project:
 | `notesInfo` | Get full note content (fields, tags) by note ID array |
 | `addNote` | Create a new note |
 | `updateNoteFields` | Update fields of an existing note |
-| `guiCurrentCard` | Get the card currently shown in Anki's review window |
+| `guiCurrentCard` | Get the card currently shown in Anki's review window (returns `cardId`, not `noteId`) |
+| `cardsInfo` | Get full card info including `note` (noteId) for a set of card IDs |
 | `getReviewsOfCards` | Get review history for a set of card IDs |
 
 All field values coming from AnkiConnect are HTML strings. All field values being written back must be HTML strings. The conversion layer handles this transparently.
@@ -112,9 +135,14 @@ All field values coming from AnkiConnect are HTML strings. All field values bein
 
 ## Conversion Layer (`lib/convert.py`)
 
-- `html_to_markdown(html: str) -> str` — uses markdownify; preserves cloze syntax
+- `html_to_markdown(html: str) -> str` — uses markdownify; preserves cloze syntax and media tokens
 - `markdown_to_html(md: str) -> str` — uses markdown lib; output is clean HTML for Anki
 - Cloze syntax `{{c1::text}}` is encoded to a placeholder before conversion and decoded after, so it passes through both directions unchanged
+- Media is handled as pass-through tokens — extracted before conversion, restored after:
+  - `<img src="file.png">` in HTML ↔ `[img:file.png]` in Markdown
+  - `[sound:file.mp3]` passes through unchanged in both directions
+  - Extra img attributes (style, class, etc.) are intentionally dropped on save
+  - `[img:filename]` is the designated insertion point for a future AI image-gen tool
 
 ---
 
@@ -146,8 +174,18 @@ Given a `noteId`, fetch the note via `notesInfo` (which also returns the note's 
 
 ## AI Layer (`lib/llm.py`)
 
-- `call_llm(system, user) -> str` — async; retries up to 2 times on rate limit errors
-- `call_llm_json(system, user) -> object` — same, but parses the response as JSON; strips markdown fences if present
+- `call_structured(response_model, system, user, stage, max_retries) -> T` — returns a validated Pydantic instance; uses Instructor (tool-calling) under the hood; retries on validation failure and rate limits
+- `call_llm(system, user, stage) -> str` — free-text call for non-structured use cases
+- Provider set by `LLM_PROVIDER` env var (`anthropic` [default] | `openai`); model by `LLM_MODEL`
+- Every call logged to `logs/llm_requests.jsonl` with timestamp, stage label, full prompts, response, duration
+
+## Prompt architecture
+
+- `policies/card_quality.md` — canonical quality guide; prepended to every AI system prompt
+- `prompts/<name>_v<N>.md` — versioned task instructions; loaded by `lib/prompts.py`
+- System prompt assembly: `policy.CARD_QUALITY + "\n\n" + prompts.load("xxx_v1.md")`
+- To edit prompt behaviour: open the relevant file in `prompts/`; bump version suffix for significant changes
+- Output schema is defined in Pydantic models (`lib/models.py`), not in prompt text
 
 ---
 
@@ -158,21 +196,33 @@ Given a `noteId`, fetch the note via `notesInfo` (which also returns the note's 
 ├── main.py                    # FastAPI app, mounts routers
 ├── pyproject.toml             # uv/pip dependencies
 ├── .env.example               # Copy to .env and fill in key
+├── policies/
+│   └── card_quality.md        # Canonical "good card" rules, prepended to AI system prompts
+├── prompts/
+│   ├── judge_v1.md            # Task instructions for the judge (needs_changes decision)
+│   └── suggest_v1.md          # Task instructions for the suggester (field improvements)
+├── logs/
+│   └── llm_requests.jsonl     # JSONL log of all LLM calls (gitignored, auto-created)
 ├── lib/
 │   ├── anki.py                # AnkiConnect async wrapper (httpx)
-│   ├── convert.py             # HTML ↔ Markdown (cloze-safe)
-│   └── llm.py                 # Anthropic SDK wrapper
+│   ├── convert.py             # HTML ↔ Markdown (cloze + media safe)
+│   ├── llm.py                 # Instructor + Pydantic LLM client; call_structured + call_llm
+│   ├── models.py              # Pydantic output models: JudgeResult, CardProposal
+│   ├── policy.py              # Loads policies/ files as string constants
+│   ├── prompts.py             # Loads versioned prompt files from prompts/
+│   └── validate.py            # Domain validation: cloze/media token preservation, has_changes
 ├── routers/
 │   ├── generate.py            # /generate — card generation from text
 │   ├── bulk_edit.py           # /bulk-edit — bulk AI editing
-│   └── current_card.py        # /current-card — live card panel + polling
+│   └── current_card.py        # /current-card — live card panel + polling + AI suggest
 ├── templates/
 │   ├── base.html              # Shared layout with nav + HTMX CDN
 │   ├── index.html             # Home page with AnkiConnect status
 │   ├── generate.html
 │   ├── bulk_edit.html
 │   └── partials/
-│       └── current_card.html  # HTMX-swapped fragment
+│       ├── current_card.html  # HTMX-swapped card edit fragment
+│       └── proposal.html      # AI suggestion proposal (accept/discard)
 └── static/
     └── style.css
 ```

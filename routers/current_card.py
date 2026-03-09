@@ -2,18 +2,14 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
-from lib import anki, convert, llm
+
+from lib import anki, convert, llm, policy, prompts, validate
+from lib.models import CardProposal, JudgeResult
 
 router = APIRouter(prefix="/current-card")
 templates = Jinja2Templates(directory="templates")
 
 _EASE_LABEL = {1: "Again", 2: "Hard", 3: "Good", 4: "Easy"}
-
-_SUGGEST_SYSTEM = """You are an Anki flashcard editor. Improve the given card based on its \
-content and recent review history. Follow the minimum information principle: one fact per \
-card, unambiguous front, concise back. Preserve cloze syntax ({{c1::text}}) exactly. \
-Return ONLY a JSON object with the same field names as the input and improved Markdown \
-values. No preamble, no explanation, no code fences."""
 
 
 def _summarise_reviews(reviews_by_card: dict, card_id: int) -> str:
@@ -79,20 +75,17 @@ async def save_current_card(request: Request):
 
 @router.get("/clear-proposal", response_class=HTMLResponse)
 async def clear_proposal():
-    """Called by the Discard button to empty the proposal div."""
+    """Called by the Discard/Dismiss button to empty the proposal div."""
     return HTMLResponse("")
 
 
 @router.post("/suggest", response_class=HTMLResponse)
 async def suggest_edit(request: Request):
     """
-    Asks the AI to propose an improved version of the current card.
+    Two-stage pipeline: judge evaluates whether the card needs changes, then
+    suggest proposes the actual edits if it does.
 
     Expects form data: note_id (int), card_id (int).
-    Fetches current field content and review history, sends both to the LLM,
-    and returns a proposal fragment the user can accept or discard.
-
-    Note: review history requires card_id (not note_id) — different things.
     """
     form = await request.form()
     note_id = int(form["note_id"])
@@ -111,13 +104,36 @@ async def suggest_edit(request: Request):
     review_summary = _summarise_reviews(reviews, card_id)
 
     fields_block = "\n".join(f"{k}: {v}" for k, v in fields_md.items())
-    user_prompt = (
+    base_user_prompt = (
         f"Card fields (Markdown):\n{fields_block}\n\n"
-        f"Review history (last 10, most recent first): {review_summary}\n\n"
-        "Propose improved field values."
+        f"Review history (last 10, most recent first): {review_summary}"
     )
 
-    proposed: dict = await llm.call_llm_json(_SUGGEST_SYSTEM, user_prompt)
+    # Stage 1: judge — decide if the card needs changes at all
+    judge_system = policy.CARD_QUALITY + "\n\n" + prompts.load("judge_v1.md")
+    judge: JudgeResult = await llm.call_structured(
+        JudgeResult, judge_system, base_user_prompt, stage="judge"
+    )
+
+    if not judge.needs_changes:
+        return templates.TemplateResponse(
+            "partials/no_changes.html",
+            {"request": request, "reason": judge.reason},
+        )
+
+    # Stage 2: suggest — propose the actual edits
+    suggest_user_prompt = (
+        base_user_prompt + f"\n\nImprovement area identified: {judge.reason}"
+    )
+    suggest_system = policy.CARD_QUALITY + "\n\n" + prompts.load("suggest_v1.md")
+    proposal: CardProposal = await llm.call_structured(
+        CardProposal, suggest_system, suggest_user_prompt, stage="suggest"
+    )
+
+    try:
+        result = validate.validate_proposal(fields_md, proposal)
+    except ValueError as e:
+        return HTMLResponse(f'<p class="proposal-error">Validation error: {e}. Try again.</p>')
 
     return templates.TemplateResponse(
         "partials/proposal.html",
@@ -125,6 +141,9 @@ async def suggest_edit(request: Request):
             "request": request,
             "note_id": note_id,
             "original": fields_md,
-            "proposed": proposed,
+            "proposed": result.fields,
+            "rationale": result.rationale,
+            "has_changes": result.has_changes,
+            "warnings": result.warnings,
         },
     )
