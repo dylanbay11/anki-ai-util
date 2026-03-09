@@ -51,15 +51,79 @@ h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
 
 .current-card {
   margin-top: 2rem;
-  padding: 1rem;
+  padding: 1.25rem;
   background: #fff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
 }
-.current-card h3 { font-size: 1rem; margin-bottom: 0.75rem; }
-.current-card small { color: #999; font-weight: 400; }
-.field { margin-bottom: 0.75rem; }
-.field label { display: block; font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 0.25rem; }
-.field pre { font-family: monospace; font-size: 0.875rem; white-space: pre-wrap; background: #f9f9f9; padding: 0.5rem; border-radius: 4px; }
+.current-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.current-card-header h3 { font-size: 1rem; font-weight: 700; }
+.note-id-label { font-size: 0.75rem; color: #999; }
+
+.field { margin-bottom: 1rem; }
+.field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.field textarea {
+  width: 100%;
+  font-family: "Menlo", "Consolas", monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  resize: vertical;
+  background: #fafafa;
+  color: #1a1a1a;
+}
+.field textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #fff;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.btn-save, .btn-suggest {
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-save {
+  background: #2563eb;
+  color: #fff;
+}
+.btn-save:hover { background: #1d4ed8; }
+.btn-suggest {
+  background: #fff;
+  color: #374151;
+  border-color: #d1d5db;
+}
+.btn-suggest:hover { border-color: #9ca3af; background: #f9fafb; }
+
+.spinner { font-size: 0.8rem; color: #9ca3af; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline; }
+
+#save-status { margin-top: 0.5rem; min-height: 1.25rem; }
+.save-ok { font-size: 0.875rem; color: #166534; }
 
 .placeholder { color: #aaa; font-style: italic; }

@@ -24,11 +24,14 @@
     </a>
   </div>
 
-  <!-- Live current-card panel, polls every 2s while page is open -->
+  <!-- Live current-card panel, polls every 2s while page is open.
+       Passes current_note_id so the server can return 204 (no-op) when
+       the same card is still showing, preserving any in-progress edits. -->
   <div id="current-card-panel"
        hx-get="/current-card/poll"
        hx-trigger="every 2s"
-       hx-swap="innerHTML">
+       hx-swap="innerHTML"
+       hx-vals='js:{current_note_id: document.querySelector("[data-note-id]")?.dataset.noteId ?? ""}'>
   </div>
 </div>
 {% endblock %}

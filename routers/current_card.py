@@ -66,7 +66,9 @@ async def save_current_card(request: Request):
     """
     form = await request.form()
     note_id = int(form["note_id"])
-    fields_md = {k: str(v) for k, v in form.items() if k != "note_id"}
+    # Skip metadata keys; every other key is an Anki field name
+    skip = {"note_id", "card_id"}
+    fields_md = {k: str(v) for k, v in form.items() if k not in skip}
     fields_html = {k: convert.markdown_to_html(v) for k, v in fields_md.items()}
     await anki.update_note_fields(note_id, fields_html)
     return HTMLResponse('<p class="save-ok">Saved.</p>')
@@ -85,7 +87,7 @@ async def suggest_edit(request: Request):
     """
     form = await request.form()
     note_id = int(form["note_id"])
-    card_id = int(form["card_id"])
+    card_id = int(form["card_id"])  # cardId from guiCurrentCard, not noteId
 
     # Fetch current note content (notesInfo takes noteId)
     notes = await anki.notes_info([note_id])
