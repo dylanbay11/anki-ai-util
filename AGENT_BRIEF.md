@@ -8,6 +8,16 @@ The core problem being solved: Anki's card creation and editing workflow is host
 
 ---
 
+## Environment Notes (Dev Machine)
+
+- **OS:** Ubuntu 22.04 LTS (older release; Anki version constraints apply)
+- **Anki:** Installed from an older/LTS-compatible package. Anki is running and functional. It may log a timezone-change warning on startup — this is cosmetic and does not affect AnkiConnect operation.
+- **AnkiConnect:** Installed and confirmed responding on `http://localhost:8765` (returns `{"result": 6, "error": null}` to a `version` action).
+- **Node.js:** Not available via system package manager at a usable version. Installed Node.js 20 via nvm. Always load nvm before running `node`/`npm`: `export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`.
+- **gh CLI:** Available (`gh version 2.4.0`), authenticated as `dylanbay11`. Repo: `https://github.com/dylanbay11/anki-ai-util`.
+
+---
+
 ## Prerequisites (User's Responsibility)
 
 - Anki is installed and running
