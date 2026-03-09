@@ -1,0 +1,48 @@
+{#
+  Rendered by /suggest. Shows the AI's proposed edits side-by-side with originals.
+  Accept submits the proposed values to /save (same endpoint as the manual save).
+  Discard replaces this fragment with nothing.
+#}
+<div class="proposal">
+  <div class="proposal-header">
+    <strong>AI suggestion</strong>
+    <span class="proposal-hint">Review the proposed changes below. Edit before accepting if needed.</span>
+  </div>
+
+  {% for field_name in original %}
+  <div class="proposal-field">
+    <div class="proposal-col">
+      <div class="proposal-col-label">Current</div>
+      <pre class="proposal-original">{{ original[field_name] }}</pre>
+    </div>
+    <div class="proposal-col">
+      <div class="proposal-col-label">Proposed</div>
+      <pre class="proposal-proposed">{{ proposed.get(field_name, original[field_name]) }}</pre>
+    </div>
+  </div>
+  {% endfor %}
+
+  <form hx-post="/current-card/save"
+        hx-target="#save-status"
+        hx-swap="innerHTML"
+        hx-on::after-request="document.querySelector('#proposal').innerHTML = ''">
+
+    <input type="hidden" name="note_id" value="{{ note_id }}">
+    {% for field_name in original %}
+    <input type="hidden"
+           name="{{ field_name }}"
+           value="{{ proposed.get(field_name, original[field_name]) }}">
+    {% endfor %}
+
+    <div class="proposal-actions">
+      <button type="submit" class="btn-save">Accept &amp; save</button>
+      <button type="button" class="btn-discard"
+              hx-get="/current-card/clear-proposal"
+              hx-target="#proposal"
+              hx-swap="innerHTML">
+        Discard
+      </button>
+    </div>
+
+  </form>
+</div>

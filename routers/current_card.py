@@ -74,6 +74,12 @@ async def save_current_card(request: Request):
     return HTMLResponse('<p class="save-ok">Saved.</p>')
 
 
+@router.get("/clear-proposal", response_class=HTMLResponse)
+async def clear_proposal():
+    """Called by the Discard button to empty the proposal div."""
+    return HTMLResponse("")
+
+
 @router.post("/suggest", response_class=HTMLResponse)
 async def suggest_edit(request: Request):
     """
