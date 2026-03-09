@@ -1,8 +1,16 @@
 """
 Seed test decks directly into Anki via AnkiConnect.
 
-Run from the project root:
-    uv run python scripts/seed_test_decks.py
+Usage
+-----
+    uv run python scripts/seed_test_decks.py           # seed (skips duplicates)
+    uv run python scripts/seed_test_decks.py --reset   # wipe TestDecks::* then reseed
+
+The --reset flag deletes every deck whose name starts with "TestDecks"
+(including the parent and all subdecks) and then re-creates them from
+scratch. Use this after experimenting with edits to restore a clean state.
+Without --reset, re-running is safe: allowDuplicate:false means existing
+cards are skipped and nothing is overwritten.
 
 Decks created
 -------------
@@ -50,17 +58,38 @@ async def create_deck(name: str):
     await invoke("createDeck", deck=name)
 
 
-async def add(deck: str, model: str, fields: dict, tags: list[str] | None = None) -> int:
-    return await invoke(
-        "addNote",
-        note={
-            "deckName": deck,
-            "modelName": model,
-            "fields": fields,
-            "tags": tags or [],
-            "options": {"allowDuplicate": False},
-        },
-    )
+async def add(deck: str, model: str, fields: dict, tags: list[str] | None = None) -> int | None:
+    try:
+        return await invoke(
+            "addNote",
+            note={
+                "deckName": deck,
+                "modelName": model,
+                "fields": fields,
+                "tags": tags or [],
+                "options": {"allowDuplicate": False},
+            },
+        )
+    except RuntimeError as e:
+        if "duplicate" in str(e).lower():
+            return None  # already exists, safe to skip
+        raise
+
+
+async def reset_test_decks():
+    """
+    Delete every deck whose name starts with 'TestDecks', including the
+    parent deck and all subdecks. cardsToo=True removes all notes as well.
+    """
+    all_decks: list[str] = await invoke("deckNames")
+    to_delete = [d for d in all_decks if d == "TestDecks" or d.startswith("TestDecks::")]
+    if not to_delete:
+        print("  No TestDecks found — nothing to delete.")
+        return
+    # Delete deepest paths first so parent decks are empty before removal
+    to_delete.sort(key=lambda d: d.count("::"), reverse=True)
+    await invoke("deleteDecks", decks=to_delete, cardsToo=True)
+    print(f"  Deleted: {', '.join(to_delete)}")
 
 
 # ---------------------------------------------------------------------------
@@ -256,9 +285,16 @@ async def seed_ai_targets():
 # ---------------------------------------------------------------------------
 
 async def main():
+    do_reset = "--reset" in sys.argv
+
     print("Checking AnkiConnect...")
     version = await invoke("version")
     print(f"  AnkiConnect version {version} — connected.\n")
+
+    if do_reset:
+        print("Resetting: deleting all TestDecks::* ...")
+        await reset_test_decks()
+        print()
 
     print("Creating decks...")
     for deck in ALL_DECKS:
