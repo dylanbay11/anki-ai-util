@@ -125,7 +125,23 @@ async def seed_biology():
     ]
     for front, back in cards:
         await add(BIOLOGY, "Basic", {"Front": front, "Back": back}, tags=["test", "biology"])
-    print(f"  {BIOLOGY}: {len(cards)} cards")
+
+    # Cloze cards — one note can produce multiple cards (one per cN marker)
+    cloze_cards = [
+        (
+            "During {{c1::cellular respiration}}, glucose is broken down to release energy "
+            "in the form of {{c2::ATP}}.",
+            "Occurs in the mitochondria. Opposite process to photosynthesis.",
+        ),
+        (
+            "The {{c1::double helix}} structure of DNA was described by Watson and Crick in {{c2::1953}}, "
+            "based partly on X-ray diffraction images by {{c3::Rosalind Franklin}}.",
+            "One of the most important discoveries in biology.",
+        ),
+    ]
+    for text, extra in cloze_cards:
+        await add(BIOLOGY, "Cloze", {"Text": text, "Extra": extra}, tags=["test", "biology"])
+    print(f"  {BIOLOGY}: {len(cards)} basic + {len(cloze_cards)} cloze notes")
 
 
 async def seed_history():

@@ -164,13 +164,20 @@ h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; }
   color: #6b7280;
   margin-bottom: 0.25rem;
 }
-.proposal-original { color: #6b7280; }
-.proposal-proposed { color: #1a1a1a; }
-.proposal-original, .proposal-proposed {
-  font-family: "Menlo", "Consolas", monospace;
+.proposal-original {
+  color: #6b7280;
   font-size: 0.875rem;
-  white-space: pre-wrap;
-  margin: 0;
+  line-height: 1.5;
+}
+.proposal-original p  { margin: 0 0 0.4em; }
+.proposal-original p:last-child { margin-bottom: 0; }
+.proposal-original ul, .proposal-original ol { padding-left: 1.25em; margin: 0 0 0.4em; }
+.proposal-original code {
+  font-family: "Menlo", "Consolas", monospace;
+  font-size: 0.8em;
+  background: #f0f0f0;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
 }
 
 .proposal-actions {

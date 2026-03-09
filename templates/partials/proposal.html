@@ -27,7 +27,7 @@
     <div class="proposal-field">
       <div class="proposal-col">
         <div class="proposal-col-label">Current</div>
-        <pre class="proposal-original">{{ original[field_name] }}</pre>
+        <div class="proposal-original">{{ original_html[field_name] | safe }}</div>
       </div>
       <div class="proposal-col">
         <div class="proposal-col-label">Proposed</div>

@@ -96,11 +96,10 @@ async def update_note_fields(note_id: int, fields: dict[str, str]) -> None:
 async def gui_current_card() -> dict | None:
     """
     Returns the card currently shown in Anki's review window, or None.
-    The returned dict contains BOTH:
+    The returned dict contains:
       cardId  — use this for get_reviews_of_cards
-      noteId  — use this for update_note_fields
       fields  — {field_name: {"value": html_string, "order": int}, ...}
-    Do not confuse cardId with noteId — they are different numbers.
+    NOTE: does NOT include noteId. Resolve noteId via cardsInfo([cardId])[0]["note"].
     """
     return await invoke("guiCurrentCard")
 

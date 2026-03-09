@@ -31,7 +31,10 @@ async def poll_current_card(request: Request, current_note_id: str = ""):
     returns 204 so HTMX does nothing — preserving any in-progress edits.
     Only returns the full card fragment when the card has changed (or on first load).
     """
-    card = await anki.gui_current_card()
+    try:
+        card = await anki.gui_current_card()
+    except Exception:
+        return HTMLResponse("")
     if not card:
         return HTMLResponse("")
 
@@ -99,9 +102,13 @@ async def suggest_edit(request: Request):
         for k, v in note["fields"].items()
     }
 
-    # Fetch review history (getReviewsOfCards takes cardId, not noteId)
-    reviews = await anki.get_reviews_of_cards([card_id])
-    review_summary = _summarise_reviews(reviews, card_id)
+    # Fetch review history (getReviewsOfCards takes cardId, not noteId).
+    # Older AnkiConnect versions don't support this action — degrade gracefully.
+    try:
+        reviews = await anki.get_reviews_of_cards([card_id])
+        review_summary = _summarise_reviews(reviews, card_id)
+    except RuntimeError:
+        review_summary = "No review history available."
 
     fields_block = "\n".join(f"{k}: {v}" for k, v in fields_md.items())
     base_user_prompt = (
@@ -125,7 +132,7 @@ async def suggest_edit(request: Request):
     suggest_user_prompt = (
         base_user_prompt + f"\n\nImprovement area identified: {judge.reason}"
     )
-    suggest_system = policy.CARD_QUALITY + "\n\n" + prompts.load("suggest_v1.md")
+    suggest_system = policy.CARD_QUALITY + "\n\n" + prompts.load("single_suggestion_v1.md")
     proposal: CardProposal = await llm.call_structured(
         CardProposal, suggest_system, suggest_user_prompt, stage="suggest"
     )
@@ -135,12 +142,14 @@ async def suggest_edit(request: Request):
     except ValueError as e:
         return HTMLResponse(f'<p class="proposal-error">Validation error: {e}. Try again.</p>')
 
+    original_html = {k: convert.markdown_to_html(v) for k, v in fields_md.items()}
     return templates.TemplateResponse(
         "partials/proposal.html",
         {
             "request": request,
             "note_id": note_id,
             "original": fields_md,
+            "original_html": original_html,
             "proposed": result.fields,
             "rationale": result.rationale,
             "has_changes": result.has_changes,
