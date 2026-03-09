@@ -49,6 +49,39 @@ Then open `http://localhost:8000`.
 
 ---
 
+## Notes vs Cards — Critical Distinction
+
+This is a common source of bugs and AI confusion. Read this before touching anything Anki-related.
+
+**Note** — the unit of *content*.
+- Has fields (e.g. `Front`, `Back`), tags, and a note type (model name).
+- Identified by a `noteId`.
+- One note produces **one or more cards** depending on the note type's templates. Example: a "Basic (and reversed card)" note type generates 2 cards from the same fields — one asking Front→Back and one Back→Front.
+- You **edit content** at the note level: `updateNoteFields(noteId, fields)`.
+
+**Card** — the unit of *scheduling*.
+- Tracks due date, interval, ease factor, and review history.
+- Identified by a `cardId`. Many-to-one with notes.
+- You **query review history** at the card level: `getReviewsOfCards([cardId, ...])`.
+
+**Practical consequences for this project:**
+
+| Operation | Use |
+|---|---|
+| Find content by deck/tag | `findNotes` → returns `noteId` list |
+| Read or edit field content | `notesInfo(noteIds)` / `updateNoteFields(noteId, ...)` |
+| Get review history | `getReviewsOfCards(cardIds)` — **cardIds, not noteIds** |
+| Current review session | `guiCurrentCard()` → returns **both** `cardId` and `noteId` |
+| Bridge note → its cards | `notesInfo` result includes `"cards": [cardId, ...]` for each note |
+
+**`guiCurrentCard` returns both IDs — don't mix them up:**
+- Use `result["noteId"]` when saving edits to field content.
+- Use `result["cardId"]` when fetching review history.
+
+**To get review history for a note:** you cannot do it directly. First call `notesInfo([noteId])`, then take the `"cards"` list from the result, then pass those cardIds to `getReviewsOfCards`.
+
+---
+
 ## AnkiConnect Basics
 
 All AnkiConnect calls are POST requests to `http://localhost:8765` with this shape:
@@ -107,7 +140,7 @@ This is the highest-value feature. The review session is the highest-intent mome
 
 ### 4. AI Edit Proposal for a Single Card
 
-Given a note ID, fetch the note, fetch its review history via `getReviewsOfCards`, send both to the AI, and return a proposed edit with a one-sentence rationale. Display as a diff (original vs. proposed). User accepts, edits, or rejects.
+Given a `noteId`, fetch the note via `notesInfo` (which also returns the note's `cards: [cardId, ...]`). Then fetch review history via `getReviewsOfCards` using those cardIds — **not** the noteId, which would be wrong. Send both the field content and review history to the AI and return a proposed edit with a one-sentence rationale. Display as a diff (original vs. proposed). User accepts, edits, or rejects.
 
 ---
 

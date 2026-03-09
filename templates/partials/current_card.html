@@ -1,4 +1,7 @@
-<div class="current-card">
+<!-- note_id is used for saving edits; card_id is used for review history. Different numbers. -->
+<div class="current-card"
+     data-note-id="{{ note_id }}"
+     data-card-id="{{ card_id }}">
   <h3>Current Card <small>(note {{ note_id }})</small></h3>
   {% for field_name, field_md in fields.items() %}
   <div class="field">
@@ -6,5 +9,6 @@
     <pre>{{ field_md }}</pre>
   </div>
   {% endfor %}
-  <!-- TODO: inline edit + save, suggest improvement button -->
+  <!-- TODO: inline edit + save (posts note_id + fields) -->
+  <!-- TODO: suggest improvement button (posts note_id + card_id; router uses card_id for review history) -->
 </div>
