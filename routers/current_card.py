@@ -27,7 +27,7 @@ def _summarise_reviews(reviews_by_card: dict, card_id: int) -> str:
 
 
 @router.get("/poll", response_class=HTMLResponse)
-async def poll_current_card(request: Request, current_note_id: int | None = None):
+async def poll_current_card(request: Request, current_note_id: str = ""):
     """
     Called by HTMX every 2s.
 
@@ -39,11 +39,14 @@ async def poll_current_card(request: Request, current_note_id: int | None = None
     if not card:
         return HTMLResponse("")
 
-    note_id: int = card["noteId"]
     card_id: int = card["cardId"]
+    # guiCurrentCard does not include noteId — look it up via cardsInfo
+    card_info = (await anki.cards_info([card_id]))[0]
+    note_id: int = card_info["note"]
 
     # Same card still showing — tell HTMX to do nothing so the form isn't wiped
-    if current_note_id is not None and current_note_id == note_id:
+    parsed_note_id = int(current_note_id) if current_note_id.isdigit() else None
+    if parsed_note_id is not None and parsed_note_id == note_id:
         return Response(status_code=204)
 
     fields_html: dict = card.get("fields", {})

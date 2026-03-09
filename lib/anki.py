@@ -105,6 +105,11 @@ async def gui_current_card() -> dict | None:
     return await invoke("guiCurrentCard")
 
 
+async def cards_info(card_ids: list[int]) -> list[dict]:
+    """Returns card dicts including 'note' (noteId) for each cardId."""
+    return await invoke("cardsInfo", cards=card_ids)
+
+
 async def get_reviews_of_cards(card_ids: list[int]) -> dict:
     """
     Returns review history keyed by cardId (as strings).
